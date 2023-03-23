@@ -1,0 +1,108 @@
+service: github-openid-serverless
+
+
+package:
+  exclude: 
+    - data/**
+    - .vscode/**
+    - .idea/**
+    - README.md
+    - .eslintrc
+    - .esbuild/**
+  include:
+    - '*.key'
+    - '*.pub'
+  individually: true
+
+custom:
+  stage: ${opt:stage, 'staging'}
+  region: 'sa-east-1'
+  serverless-offline:
+    httpPort: 3000
+    noPrependStageInUrl: true
+  esbuild:
+    bundle: true
+    sourcemap: true
+    minify: false
+    packager: yarn
+    watch:
+      pattern: 'src/**/*.ts'
+      ignore: '**/*.test.ts'
+  swaggerApi:
+    swagger: ${file(docs/swagger.yaml)}
+  staging:
+    stage: staging
+    logRetentionInDays: 5
+  production:
+    stage: production
+    logRetentionInDays: 60
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  versionFunctions: false
+  stage: ${self:custom.stage}
+  region: 'sa-east-1'
+  endpointType: REGIONAL
+  environment:
+    REGION: ${self:custom.region}
+    STAGE: ${self:custom.${self:custom.stage}.stage}
+    NODE_OPTIONS: --enable-source-maps
+    GITHUB_API_URL: https://api.github.com
+    GITHUB_LOGIN_URL: https://github.com
+    GITHUB_CERT_PUBLIC: github.pub
+    GITHUB_CERT_KEY: github.key
+  deploymentBucket:
+    name: serverless.tag.deployment
+
+functions:
+  OpenIdDiscovery:
+    handler: src/functions/github/openIdDiscovery.handler
+    events:
+      - http:
+          path: /.well-known/openid-configuration
+          method: get
+          cors: true
+  Authorize:
+    handler: src/functions/github/authorizer.handler
+    events:
+      - http:
+          path: /authorize
+          method: get
+          cors: true
+  Token:
+    handler: src/functions/github/token.handler
+    events:
+      - http:
+          path: /token
+          method: get
+          cors: true
+      - http:
+          path: /token
+          method: post
+          cors: true
+  UserInfo:
+    handler: src/functions/github/userInfo.handler
+    events:
+      - http:
+          path: /userinfo
+          method: get
+          cors: true
+      - http:
+          path: /userinfo
+          method: post
+          cors: true
+  Jwks:
+    handler: src/functions/github/jwks.handler
+    events:
+      - http:
+          path: /.well-known/jwks.json
+          method: get
+          cors: true
+
+plugins:
+  - serverless-esbuild
+  - serverless-offline
+  - serverless-plugin-swagger-api
+  - serverless-plugin-log-retention
+  - serverless-iam-roles-per-function
